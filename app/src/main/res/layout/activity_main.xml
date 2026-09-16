@@ -18,15 +18,14 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="Search podcasts from iTunes"
+        android:text="Search, subscribe and play podcasts"
         android:textSize="14sp" />
 
     <EditText
         android:id="@+id/searchEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:hint="Podcast name or topic"
         android:inputType="text" />
 
@@ -53,7 +52,7 @@
         android:id="@+id/statusTextView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingVertical="8dp"
+        android:paddingVertical="6dp"
         android:text="Enter a search term to begin."
         android:textSize="14sp" />
 
@@ -63,5 +62,35 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:dividerHeight="1dp" />
+
+    <TextView
+        android:id="@+id/selectedPodcastTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="8dp"
+        android:text="No podcast selected"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/subscribeButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="Subscribe" />
+
+        <Button
+            android:id="@+id/playButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="Play Latest" />
+    </LinearLayout>
 
 </LinearLayout>
