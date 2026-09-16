@@ -1,21 +1,24 @@
 # SuperPodcast - AndroidApp4
 
-SuperPodcast is an Android podcast app created for Assignment 7. The project applies networking concepts from the PodPlay tutorial using the iTunes Search API.
+SuperPodcast is an Android podcast app completed for Assignment 8. It builds on the networking work from Assignment 7 and uses the iTunes Search API to discover podcasts and load playable episodes.
 
 ## Features
 
 - Search for podcasts by name or topic
 - Load podcast data from the iTunes Search API
-- Optional unusual search filter that only shows podcast titles with 4 or more words
+- Display podcast artwork, title, and artist
+- Optional filter for podcast titles with 4 or more words
 - Select a podcast from the search results
-- Subscribe and unsubscribe from podcasts using SharedPreferences
+- Subscribe and unsubscribe using SharedPreferences
 - Load the latest available podcast episode
-- Stream podcast audio using Media3 ExoPlayer
-- Basic loading and error messages
+- Stream audio using AndroidX Media3 ExoPlayer
+- Pause, resume, and replay podcast playback
+- Loading, empty-result, and error messages
+- Custom dark interface with cyan accents
 
-## Assignment 7
+## Assignment 8 Improvements
 
-This version focuses on the core functionality required for the networking assignment. The interface is intentionally simple because the next assignment will focus on completing and polishing the application.
+Assignment 8 focused on completing and polishing the SuperPodcast app. The interface was redesigned, search results were improved with real podcast artwork, playback controls were expanded, and the code was reviewed and commented.
 
 ## Technologies
 
@@ -26,6 +29,7 @@ This version focuses on the core functionality required for the networking assig
 - HttpURLConnection
 - SharedPreferences
 - AndroidX Media3 ExoPlayer
+- Coil image loading library
 
 ## Repository
 
