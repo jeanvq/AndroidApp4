@@ -1,7 +1,11 @@
 package com.example.androidapp4
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
@@ -21,11 +25,7 @@ import java.util.concurrent.Executors
 /** Main screen for the SuperPodcast networking assignment. */
 class MainActivity : AppCompatActivity() {
 
-    data class Podcast(
-        val title: String,
-        val artist: String,
-        val collectionId: Long
-    ) {
+    data class Podcast(val title: String, val artist: String, val collectionId: Long) {
         override fun toString(): String = "$title\n$artist"
     }
 
@@ -42,11 +42,14 @@ class MainActivity : AppCompatActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPodcast: Podcast? = null
     private var mediaPlayer: MediaPlayer? = null
+    private lateinit var audioManager: AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         searchEditText = findViewById(R.id.searchEditText)
         searchButton = findViewById(R.id.searchButton)
         longTitleCheckBox = findViewById(R.id.longTitleCheckBox)
@@ -59,14 +62,11 @@ class MainActivity : AppCompatActivity() {
 
         searchButton.setOnClickListener {
             val term = searchEditText.text.toString().trim()
-            if (term.isEmpty()) {
-                statusTextView.text = "Please enter a podcast name or topic."
-            } else {
-                searchPodcasts(term)
-            }
+            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic."
+            else searchPodcasts(term)
         }
 
-        // A result must be selected before the subscription/playback actions are enabled.
+        // Selecting a result enables the two main podcast actions.
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
             val podcast = selectedPodcast ?: return@setOnItemClickListener
@@ -76,29 +76,19 @@ class MainActivity : AppCompatActivity() {
             updateSubscribeButton(podcast)
         }
 
-        subscribeButton.setOnClickListener {
-            selectedPodcast?.let { toggleSubscription(it) }
-        }
-
-        playButton.setOnClickListener {
-            selectedPodcast?.let { loadLatestEpisode(it) }
-        }
+        subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
+        playButton.setOnClickListener { selectedPodcast?.let { loadLatestEpisode(it) } }
     }
 
-    /** Requests podcast search results from the iTunes Search API on a background thread. */
+    /** Requests podcast search results from iTunes on a background thread. */
     private fun searchPodcasts(term: String) {
         setLoading(true)
         executor.execute {
             try {
                 val encodedTerm = URLEncoder.encode(term, "UTF-8")
-                val url = URL("https://itunes.apple.com/search?term=$encodedTerm&media=podcast&entity=podcast&limit=25")
-                val jsonText = downloadText(url)
+                val jsonText = downloadText(URL("https://itunes.apple.com/search?term=$encodedTerm&media=podcast&entity=podcast&limit=25"))
                 val podcasts = parsePodcastResults(jsonText)
-
-                runOnUiThread {
-                    showResults(podcasts)
-                    setLoading(false)
-                }
+                runOnUiThread { showResults(podcasts); setLoading(false) }
             } catch (exception: Exception) {
                 runOnUiThread {
                     statusTextView.text = "Could not load podcasts. Check your internet connection."
@@ -109,18 +99,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Converts the JSON response into Podcast objects and applies the unusual word-count filter. */
+    /** Converts JSON into Podcast objects and applies the unusual title word-count filter. */
     private fun parsePodcastResults(jsonText: String): List<Podcast> {
         val results = JSONObject(jsonText).getJSONArray("results")
         val podcasts = mutableListOf<Podcast>()
-
         for (index in 0 until results.length()) {
             val item = results.getJSONObject(index)
             val title = item.optString("collectionName", "Unknown Podcast")
             val artist = item.optString("artistName", "Unknown Artist")
             val collectionId = item.optLong("collectionId", 0L)
             val wordCount = title.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size
-
             if (collectionId != 0L && (!longTitleCheckBox.isChecked || wordCount >= 4)) {
                 podcasts.add(Podcast(title, artist, collectionId))
             }
@@ -133,7 +121,7 @@ class MainActivity : AppCompatActivity() {
         statusTextView.text = if (podcasts.isEmpty()) "No podcasts matched this search/filter." else "${podcasts.size} podcasts found - tap one to select it."
     }
 
-    /** Saves subscriptions locally so they are still available after the app is restarted. */
+    /** Stores a simple subscription value locally with SharedPreferences. */
     private fun toggleSubscription(podcast: Podcast) {
         val preferences = getSharedPreferences("subscriptions", MODE_PRIVATE)
         val key = podcast.collectionId.toString()
@@ -144,20 +132,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSubscribeButton(podcast: Podcast) {
-        val subscribed = getSharedPreferences("subscriptions", MODE_PRIVATE)
-            .getBoolean(podcast.collectionId.toString(), false)
+        val subscribed = getSharedPreferences("subscriptions", MODE_PRIVATE).getBoolean(podcast.collectionId.toString(), false)
         subscribeButton.text = if (subscribed) "Unsubscribe" else "Subscribe"
     }
 
-    /** Looks up recent episodes for the selected podcast and attempts to play the first audio preview returned. */
+    /** Gets recent episodes for the selected podcast and chooses the first audio URL. */
     private fun loadLatestEpisode(podcast: Podcast) {
         setLoading(true)
         statusTextView.text = "Loading latest episode..."
-
         executor.execute {
             try {
-                val url = URL("https://itunes.apple.com/lookup?id=${podcast.collectionId}&entity=podcastEpisode&limit=5")
-                val jsonText = downloadText(url)
+                val jsonText = downloadText(URL("https://itunes.apple.com/lookup?id=${podcast.collectionId}&entity=podcastEpisode&limit=5"))
                 val results = JSONObject(jsonText).getJSONArray("results")
                 var audioUrl: String? = null
                 var episodeTitle = "Latest episode"
@@ -178,31 +163,28 @@ class MainActivity : AppCompatActivity() {
                 val finalTitle = episodeTitle
                 runOnUiThread {
                     setLoading(false)
-                    if (finalAudioUrl == null) {
-                        statusTextView.text = "No playable episode was returned for this podcast."
-                    } else {
-                        playAudio(finalAudioUrl, finalTitle)
-                    }
+                    if (finalAudioUrl == null) statusTextView.text = "No playable episode was returned for this podcast."
+                    else playAudio(finalAudioUrl, finalTitle)
                 }
             } catch (exception: Exception) {
-                runOnUiThread {
-                    setLoading(false)
-                    statusTextView.text = "Could not load an episode for this podcast."
-                }
+                runOnUiThread { setLoading(false); statusTextView.text = "Could not load an episode for this podcast." }
             }
         }
     }
 
-    /** Uses Android MediaPlayer for simple streaming playback. */
+    /** Streams podcast audio with MediaPlayer and requests normal media audio focus. */
     private fun playAudio(audioUrl: String, episodeTitle: String) {
         mediaPlayer?.release()
+
+        val attributes = AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build()
+
+        requestAudioFocus(attributes)
         mediaPlayer = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build()
-            )
+            setAudioAttributes(attributes)
+            setVolume(1.0f, 1.0f)
             setDataSource(audioUrl)
             setOnPreparedListener {
                 it.start()
@@ -222,17 +204,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Small helper used by both iTunes network requests. */
+    /** Audio focus makes sure podcast sound is routed as normal media audio. */
+    private fun requestAudioFocus(attributes: AudioAttributes) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attributes)
+                .setOnAudioFocusChangeListener { }
+                .build()
+            audioManager.requestAudioFocus(audioFocusRequest!!)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+        }
+    }
+
+    /** Helper used by both iTunes network requests. */
     private fun downloadText(url: URL): String {
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        return try {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
+        return try { connection.inputStream.bufferedReader().use { it.readText() } }
+        finally { connection.disconnect() }
     }
 
     private fun setLoading(loading: Boolean) {
@@ -242,6 +235,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         mediaPlayer?.release()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        }
         executor.shutdown()
         super.onDestroy()
     }
