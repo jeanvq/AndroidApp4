@@ -73,9 +73,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
+
+        // Play the latest episode, or pause/resume one that is already loaded.
         playButton.setOnClickListener {
-            if (isPlaying) stopPlayback(true)
-            else selectedPodcast?.let { loadLatestEpisode(it) }
+            val currentPlayer = player
+            if (currentPlayer == null) {
+                selectedPodcast?.let { loadLatestEpisode(it) }
+            } else if (currentPlayer.isPlaying) {
+                currentPlayer.pause()
+                isPlaying = false
+                playButton.text = "Resume"
+                statusTextView.text = "Playback paused."
+            } else {
+                currentPlayer.play()
+                isPlaying = true
+                playButton.text = "Pause"
+                statusTextView.text = "Playback resumed."
+            }
         }
     }
 
@@ -229,12 +243,14 @@ class MainActivity : AppCompatActivity() {
                         Player.STATE_READY -> if (exoPlayer.playWhenReady) {
                             isPlaying = true
                             playButton.isEnabled = true
-                            playButton.text = "Stop"
+                            playButton.text = "Pause"
                             statusTextView.text = "Playing $podcastTitle: $episodeTitle"
                         }
                         Player.STATE_ENDED -> {
                             isPlaying = false
-                            playButton.text = "Play Latest"
+                            exoPlayer.seekTo(0)
+                            exoPlayer.pause()
+                            playButton.text = "Replay"
                             statusTextView.text = "Episode finished: $episodeTitle"
                         }
                     }
