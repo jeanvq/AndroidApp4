@@ -37,6 +37,10 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+
+    // Media3 ExoPlayer handles remote podcast audio streams more reliably than MediaPlayer.
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
