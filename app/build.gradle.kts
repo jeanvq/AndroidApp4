@@ -41,6 +41,9 @@ dependencies {
     // Media3 ExoPlayer handles remote podcast audio streams more reliably than MediaPlayer.
     implementation("androidx.media3:media3-exoplayer:1.8.0")
 
+    // Coil loads podcast artwork from the image URL returned by iTunes.
+    implementation("io.coil-kt:coil:2.7.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
