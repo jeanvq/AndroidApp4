@@ -24,7 +24,6 @@ import java.util.concurrent.Executors
 
 /** Main screen for the SuperPodcast networking assignment. */
 class MainActivity : AppCompatActivity() {
-
     data class Podcast(val title: String, val artist: String, val collectionId: Long) {
         override fun toString(): String = "$title\n$artist"
     }
@@ -38,7 +37,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var selectedPodcastTextView: TextView
     private lateinit var subscribeButton: Button
     private lateinit var playButton: Button
-
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPodcast: Podcast? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -49,7 +47,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         searchEditText = findViewById(R.id.searchEditText)
         searchButton = findViewById(R.id.searchButton)
@@ -63,13 +60,10 @@ class MainActivity : AppCompatActivity() {
 
         searchButton.setOnClickListener {
             val term = searchEditText.text.toString().trim()
-            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic."
-            else searchPodcasts(term)
+            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic." else searchPodcasts(term)
         }
-
-        // Changing the selected podcast stops audio from the previous selection.
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
-            stopPlayback(showMessage = false)
+            stopPlayback(false)
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
             val podcast = selectedPodcast ?: return@setOnItemClickListener
             selectedPodcastTextView.text = "Selected: ${podcast.title}"
@@ -78,17 +72,15 @@ class MainActivity : AppCompatActivity() {
             playButton.isEnabled = true
             updateSubscribeButton(podcast)
         }
-
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
         playButton.setOnClickListener {
-            if (isPlaying) stopPlayback(showMessage = true)
-            else selectedPodcast?.let { loadLatestEpisode(it) }
+            if (isPlaying) stopPlayback(true) else selectedPodcast?.let { loadLatestEpisode(it) }
         }
     }
 
     /** Requests podcast search results from iTunes on a background thread. */
     private fun searchPodcasts(term: String) {
-        stopPlayback(showMessage = false)
+        stopPlayback(false)
         setLoading(true)
         executor.execute {
             try {
@@ -116,9 +108,7 @@ class MainActivity : AppCompatActivity() {
             val artist = item.optString("artistName", "Unknown Artist")
             val collectionId = item.optLong("collectionId", 0L)
             val wordCount = title.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size
-            if (collectionId != 0L && (!longTitleCheckBox.isChecked || wordCount >= 4)) {
-                podcasts.add(Podcast(title, artist, collectionId))
-            }
+            if (collectionId != 0L && (!longTitleCheckBox.isChecked || wordCount >= 4)) podcasts.add(Podcast(title, artist, collectionId))
         }
         return podcasts
     }
@@ -158,7 +148,6 @@ class MainActivity : AppCompatActivity() {
                 val results = JSONObject(jsonText).getJSONArray("results")
                 var audioUrl: String? = null
                 var episodeTitle = "Latest episode"
-
                 for (index in 0 until results.length()) {
                     val item = results.getJSONObject(index)
                     if (item.optString("wrapperType") == "podcastEpisode") {
@@ -170,7 +159,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-
                 val finalAudioUrl = audioUrl
                 val finalTitle = episodeTitle
                 runOnUiThread {
@@ -190,15 +178,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Streams podcast audio with MediaPlayer and keeps the button/status synchronized. */
+    /** Streams podcast audio and keeps the screen synchronized with the player state. */
     private fun playAudio(audioUrl: String, podcastTitle: String, episodeTitle: String) {
-        stopPlayback(showMessage = false)
-
+        stopPlayback(false)
         val attributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .build()
-
         requestAudioFocus(attributes)
         statusTextView.text = "Preparing: $episodeTitle"
         playButton.isEnabled = false
@@ -209,20 +195,20 @@ class MainActivity : AppCompatActivity() {
             setDataSource(audioUrl)
             setOnPreparedListener { player ->
                 player.start()
-                isPlaying = true
+                this@MainActivity.isPlaying = true
                 playButton.isEnabled = true
                 playButton.text = "Stop"
                 statusTextView.text = "Playing $podcastTitle: $episodeTitle"
             }
             setOnCompletionListener { player ->
-                isPlaying = false
+                this@MainActivity.isPlaying = false
                 playButton.text = "Play Latest"
                 statusTextView.text = "Episode finished: $episodeTitle"
                 player.release()
-                mediaPlayer = null
+                this@MainActivity.mediaPlayer = null
             }
             setOnErrorListener { player, _, _ ->
-                isPlaying = false
+                this@MainActivity.isPlaying = false
                 playButton.isEnabled = true
                 playButton.text = "Play Latest"
                 statusTextView.text = "This episode could not be played."
@@ -233,14 +219,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Stops and releases the current stream so old playback cannot remain attached to the UI. */
+    /** Stops and releases the current stream. */
     private fun stopPlayback(showMessage: Boolean) {
         mediaPlayer?.let { player ->
-            try {
-                if (player.isPlaying) player.stop()
-            } catch (_: IllegalStateException) {
-                // Player may still be preparing; releasing it is enough.
-            }
+            try { if (player.isPlaying) player.stop() } catch (_: IllegalStateException) { }
             player.release()
         }
         mediaPlayer = null
@@ -252,7 +234,7 @@ class MainActivity : AppCompatActivity() {
         if (showMessage && ::statusTextView.isInitialized) statusTextView.text = "Playback stopped."
     }
 
-    /** Audio focus makes sure podcast sound is routed as normal media audio. */
+    /** Requests normal media audio focus. */
     private fun requestAudioFocus(attributes: AudioAttributes) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
@@ -272,8 +254,7 @@ class MainActivity : AppCompatActivity() {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        return try { connection.inputStream.bufferedReader().use { it.readText() } }
-        finally { connection.disconnect() }
+        return try { connection.inputStream.bufferedReader().use { it.readText() } } finally { connection.disconnect() }
     }
 
     private fun setLoading(loading: Boolean) {
@@ -282,10 +263,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        stopPlayback(showMessage = false)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        }
+        stopPlayback(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         executor.shutdown()
         super.onDestroy()
     }
