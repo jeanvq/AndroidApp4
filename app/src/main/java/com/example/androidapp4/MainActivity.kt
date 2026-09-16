@@ -6,21 +6,14 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.ListView
-import android.widget.ProgressBar
-import android.widget.SeekBar
-import android.widget.TextView
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.load
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -43,6 +36,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playbackSeekBar: SeekBar
     private lateinit var currentTimeTextView: TextView
     private lateinit var durationTextView: TextView
+    private lateinit var discoverTabButton: Button
+    private lateinit var subscribedTabButton: Button
+    private lateinit var listSectionTitleTextView: TextView
 
     private val executor = Executors.newSingleThreadExecutor()
     private val progressHandler = Handler(Looper.getMainLooper())
@@ -50,16 +46,19 @@ class MainActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private var isPlaying = false
     private var userSeeking = false
+    private var searchResults = listOf<Podcast>()
+    private var showingSubscribed = false
 
     private val progressUpdater = object : Runnable {
         override fun run() {
-            val currentPlayer = player
-            if (currentPlayer != null && currentPlayer.duration > 0) {
-                val duration = currentPlayer.duration
-                val position = currentPlayer.currentPosition.coerceAtMost(duration)
-                if (!userSeeking) playbackSeekBar.progress = ((position * 1000) / duration).toInt()
-                currentTimeTextView.text = formatTime(position)
-                durationTextView.text = formatTime(duration)
+            player?.let { currentPlayer ->
+                if (currentPlayer.duration > 0) {
+                    val duration = currentPlayer.duration
+                    val position = currentPlayer.currentPosition.coerceAtMost(duration)
+                    if (!userSeeking) playbackSeekBar.progress = ((position * 1000) / duration).toInt()
+                    currentTimeTextView.text = formatTime(position)
+                    durationTextView.text = formatTime(duration)
+                }
             }
             progressHandler.postDelayed(this, 500)
         }
@@ -81,12 +80,17 @@ class MainActivity : AppCompatActivity() {
         playbackSeekBar = findViewById(R.id.playbackSeekBar)
         currentTimeTextView = findViewById(R.id.currentTimeTextView)
         durationTextView = findViewById(R.id.durationTextView)
+        discoverTabButton = findViewById(R.id.discoverTabButton)
+        subscribedTabButton = findViewById(R.id.subscribedTabButton)
+        listSectionTitleTextView = findViewById(R.id.listSectionTitleTextView)
 
         searchButton.setOnClickListener {
             val term = searchEditText.text.toString().trim()
             if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic."
             else searchPodcasts(term)
         }
+        discoverTabButton.setOnClickListener { showDiscover() }
+        subscribedTabButton.setOnClickListener { showSubscribedPodcasts() }
 
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
             stopPlayback(false)
@@ -100,25 +104,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
-
-        // Play the latest episode, or pause/resume one that is already loaded.
         playButton.setOnClickListener {
             val currentPlayer = player
             if (currentPlayer == null) selectedPodcast?.let { loadLatestEpisode(it) }
             else if (currentPlayer.isPlaying) {
-                currentPlayer.pause()
-                isPlaying = false
-                playButton.text = "Resume"
-                statusTextView.text = "Playback paused."
+                currentPlayer.pause(); isPlaying = false; playButton.text = "Resume"; statusTextView.text = "Playback paused."
             } else {
-                currentPlayer.play()
-                isPlaying = true
-                playButton.text = "Pause"
-                statusTextView.text = "Playback resumed."
+                currentPlayer.play(); isPlaying = true; playButton.text = "Pause"; statusTextView.text = "Playback resumed."
             }
         }
 
-        // Let the user drag the progress bar to a different part of the episode.
         playbackSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -128,10 +123,7 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) { userSeeking = true }
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val currentPlayer = player
-                if (currentPlayer != null && currentPlayer.duration > 0) {
-                    currentPlayer.seekTo((currentPlayer.duration * playbackSeekBar.progress) / 1000)
-                }
+                player?.let { if (it.duration > 0) it.seekTo((it.duration * playbackSeekBar.progress) / 1000) }
                 userSeeking = false
             }
         })
@@ -148,18 +140,19 @@ class MainActivity : AppCompatActivity() {
                 val encodedTerm = URLEncoder.encode(term, "UTF-8")
                 val url = URL("https://itunes.apple.com/search?term=$encodedTerm&media=podcast&entity=podcast&limit=25")
                 val podcasts = parsePodcastResults(downloadText(url), useLongTitleFilter)
-                runOnUiThread { showResults(podcasts); setLoading(false) }
-            } catch (exception: Exception) {
                 runOnUiThread {
-                    statusTextView.text = "Could not load podcasts. Check your internet connection."
-                    podcastListView.adapter = null
+                    searchResults = podcasts
+                    showingSubscribed = false
+                    updateTabs()
+                    showResults(podcasts, "Discover")
                     setLoading(false)
                 }
+            } catch (exception: Exception) {
+                runOnUiThread { statusTextView.text = "Could not load podcasts. Check your internet connection."; podcastListView.adapter = null; setLoading(false) }
             }
         }
     }
 
-    /** Converts JSON results and optionally keeps titles with four or more words. */
     private fun parsePodcastResults(jsonText: String, useLongTitleFilter: Boolean): List<Podcast> {
         val results = JSONObject(jsonText).getJSONArray("results")
         val podcasts = mutableListOf<Podcast>()
@@ -175,17 +168,40 @@ class MainActivity : AppCompatActivity() {
         return podcasts
     }
 
-    private fun showResults(podcasts: List<Podcast>) {
+    /** Shows the latest search results again without making another network request. */
+    private fun showDiscover() {
+        showingSubscribed = false
+        updateTabs()
+        showResults(searchResults, "Discover")
+        statusTextView.text = if (searchResults.isEmpty()) "Search for podcasts to discover something new." else "${searchResults.size} search results."
+    }
+
+    /** Loads the user's saved podcast library from SharedPreferences. */
+    private fun showSubscribedPodcasts() {
+        showingSubscribed = true
+        updateTabs()
+        val subscriptions = loadSubscriptions()
+        showResults(subscriptions, "Subscribed")
+        statusTextView.text = if (subscriptions.isEmpty()) "You have not subscribed to any podcasts yet." else "${subscriptions.size} subscribed podcasts."
+    }
+
+    private fun updateTabs() {
+        discoverTabButton.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor(if (showingSubscribed) "#151C23" else "#123447"))
+        subscribedTabButton.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor(if (showingSubscribed) "#123447" else "#151C23"))
+        discoverTabButton.setTextColor(android.graphics.Color.parseColor(if (showingSubscribed) "#94A3B8" else "#7DD3FC"))
+        subscribedTabButton.setTextColor(android.graphics.Color.parseColor(if (showingSubscribed) "#7DD3FC" else "#94A3B8"))
+    }
+
+    private fun showResults(podcasts: List<Podcast>, sectionTitle: String) {
         selectedPodcast = null
         selectedPodcastTextView.text = "No podcast selected"
         subscribeButton.isEnabled = false
         playButton.isEnabled = false
         resetProgress()
+        listSectionTitleTextView.text = sectionTitle
         podcastListView.adapter = PodcastAdapter(podcasts)
-        statusTextView.text = if (podcasts.isEmpty()) "No podcasts matched this search/filter." else "${podcasts.size} podcasts found - tap one to select it."
     }
 
-    /** Custom adapter that shows podcast title, artist and artwork. */
     private inner class PodcastAdapter(podcasts: List<Podcast>) : ArrayAdapter<Podcast>(this, R.layout.podcast_list_item, podcasts) {
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val row = convertView ?: LayoutInflater.from(context).inflate(R.layout.podcast_list_item, parent, false)
@@ -206,24 +222,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Saves complete podcast information so subscriptions survive app restarts. */
     private fun toggleSubscription(podcast: Podcast) {
-        val preferences = getSharedPreferences("subscriptions", MODE_PRIVATE)
-        val key = podcast.collectionId.toString()
-        val subscribed = preferences.getBoolean(key, false)
-        preferences.edit().putBoolean(key, !subscribed).apply()
+        val subscriptions = loadSubscriptions().toMutableList()
+        val existingIndex = subscriptions.indexOfFirst { it.collectionId == podcast.collectionId }
+        val nowSubscribed = existingIndex == -1
+        if (nowSubscribed) subscriptions.add(podcast) else subscriptions.removeAt(existingIndex)
+        saveSubscriptions(subscriptions)
         updateSubscribeButton(podcast)
-        statusTextView.text = if (!subscribed) "Subscribed to ${podcast.title}" else "Unsubscribed from ${podcast.title}"
+        statusTextView.text = if (nowSubscribed) "Subscribed to ${podcast.title}" else "Unsubscribed from ${podcast.title}"
+        if (showingSubscribed) showSubscribedPodcasts()
+    }
+
+    private fun saveSubscriptions(podcasts: List<Podcast>) {
+        val json = JSONArray()
+        podcasts.forEach { podcast ->
+            json.put(JSONObject().apply {
+                put("title", podcast.title); put("artist", podcast.artist); put("collectionId", podcast.collectionId); put("artworkUrl", podcast.artworkUrl)
+            })
+        }
+        getSharedPreferences("subscriptions", MODE_PRIVATE).edit().putString("saved_podcasts", json.toString()).apply()
+    }
+
+    private fun loadSubscriptions(): List<Podcast> {
+        val text = getSharedPreferences("subscriptions", MODE_PRIVATE).getString("saved_podcasts", "[]") ?: "[]"
+        return try {
+            val json = JSONArray(text)
+            (0 until json.length()).map { index ->
+                val item = json.getJSONObject(index)
+                Podcast(item.optString("title"), item.optString("artist"), item.optLong("collectionId"), item.optString("artworkUrl"))
+            }.filter { it.collectionId != 0L }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun updateSubscribeButton(podcast: Podcast) {
-        val subscribed = getSharedPreferences("subscriptions", MODE_PRIVATE).getBoolean(podcast.collectionId.toString(), false)
+        val subscribed = loadSubscriptions().any { it.collectionId == podcast.collectionId }
         subscribeButton.text = if (subscribed) "Unsubscribe" else "Subscribe"
     }
 
     private fun loadLatestEpisode(podcast: Podcast) {
-        setLoading(true)
-        playButton.isEnabled = false
-        statusTextView.text = "Loading latest episode from ${podcast.title}..."
+        setLoading(true); playButton.isEnabled = false; statusTextView.text = "Loading latest episode from ${podcast.title}..."
         executor.execute {
             try {
                 val url = URL("https://itunes.apple.com/lookup?id=${podcast.collectionId}&entity=podcastEpisode&limit=5")
@@ -237,14 +275,11 @@ class MainActivity : AppCompatActivity() {
                         if (candidate.isNotBlank()) { audioUrl = candidate; episodeTitle = item.optString("trackName", episodeTitle); break }
                     }
                 }
-                val finalAudioUrl = audioUrl
-                val finalTitle = episodeTitle
+                val finalAudioUrl = audioUrl; val finalTitle = episodeTitle
                 runOnUiThread {
-                    setLoading(false)
-                    playButton.isEnabled = true
+                    setLoading(false); playButton.isEnabled = true
                     if (selectedPodcast?.collectionId != podcast.collectionId) return@runOnUiThread
-                    if (finalAudioUrl == null) statusTextView.text = "No playable episode was returned for ${podcast.title}."
-                    else playAudio(finalAudioUrl, podcast.title, finalTitle)
+                    if (finalAudioUrl == null) statusTextView.text = "No playable episode was returned for ${podcast.title}." else playAudio(finalAudioUrl, podcast.title, finalTitle)
                 }
             } catch (exception: Exception) {
                 runOnUiThread { setLoading(false); playButton.isEnabled = true; statusTextView.text = "Could not load an episode for ${podcast.title}." }
@@ -252,52 +287,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Streams a podcast episode using Media3 ExoPlayer. */
     private fun playAudio(audioUrl: String, podcastTitle: String, episodeTitle: String) {
-        stopPlayback(false)
-        statusTextView.text = "Preparing: $episodeTitle"
-        playButton.isEnabled = false
+        stopPlayback(false); statusTextView.text = "Preparing: $episodeTitle"; playButton.isEnabled = false
         player = ExoPlayer.Builder(this).build().also { exoPlayer ->
             exoPlayer.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
-                        Player.STATE_READY -> if (exoPlayer.playWhenReady) {
-                            isPlaying = true
-                            playButton.isEnabled = true
-                            playButton.text = "Pause"
-                            durationTextView.text = formatTime(exoPlayer.duration)
-                            statusTextView.text = "Playing $podcastTitle: $episodeTitle"
-                        }
-                        Player.STATE_ENDED -> {
-                            isPlaying = false
-                            exoPlayer.seekTo(0)
-                            exoPlayer.pause()
-                            playbackSeekBar.progress = 0
-                            currentTimeTextView.text = "0:00"
-                            playButton.text = "Replay"
-                            statusTextView.text = "Episode finished: $episodeTitle"
-                        }
+                        Player.STATE_READY -> if (exoPlayer.playWhenReady) { isPlaying = true; playButton.isEnabled = true; playButton.text = "Pause"; durationTextView.text = formatTime(exoPlayer.duration); statusTextView.text = "Playing $podcastTitle: $episodeTitle" }
+                        Player.STATE_ENDED -> { isPlaying = false; exoPlayer.seekTo(0); exoPlayer.pause(); playbackSeekBar.progress = 0; currentTimeTextView.text = "0:00"; playButton.text = "Replay"; statusTextView.text = "Episode finished: $episodeTitle" }
                     }
                 }
-                override fun onPlayerError(error: PlaybackException) {
-                    isPlaying = false
-                    playButton.isEnabled = true
-                    playButton.text = "Play Latest"
-                    statusTextView.text = "This episode could not be played."
-                }
+                override fun onPlayerError(error: PlaybackException) { isPlaying = false; playButton.isEnabled = true; playButton.text = "Play Latest"; statusTextView.text = "This episode could not be played." }
             })
-            exoPlayer.setMediaItem(MediaItem.fromUri(audioUrl))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
+            exoPlayer.setMediaItem(MediaItem.fromUri(audioUrl)); exoPlayer.prepare(); exoPlayer.playWhenReady = true
         }
     }
 
     private fun formatTime(milliseconds: Long): String {
         if (milliseconds <= 0) return "0:00"
-        val totalSeconds = milliseconds / 1000
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
+        val totalSeconds = milliseconds / 1000; val hours = totalSeconds / 3600; val minutes = (totalSeconds % 3600) / 60; val seconds = totalSeconds % 60
         return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds) else String.format("%d:%02d", minutes, seconds)
     }
 
@@ -308,8 +316,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopPlayback(showMessage: Boolean) {
-        player?.stop(); player?.release(); player = null; isPlaying = false
-        resetProgress()
+        player?.stop(); player?.release(); player = null; isPlaying = false; resetProgress()
         if (::playButton.isInitialized) { playButton.text = "Play Latest"; playButton.isEnabled = selectedPodcast != null }
         if (showMessage && ::statusTextView.isInitialized) statusTextView.text = "Playback stopped."
     }
@@ -323,9 +330,6 @@ class MainActivity : AppCompatActivity() {
     private fun setLoading(loading: Boolean) { progressBar.visibility = if (loading) View.VISIBLE else View.GONE; searchButton.isEnabled = !loading }
 
     override fun onDestroy() {
-        progressHandler.removeCallbacks(progressUpdater)
-        stopPlayback(false)
-        executor.shutdown()
-        super.onDestroy()
+        progressHandler.removeCallbacks(progressUpdater); stopPlayback(false); executor.shutdown(); super.onDestroy()
     }
 }
