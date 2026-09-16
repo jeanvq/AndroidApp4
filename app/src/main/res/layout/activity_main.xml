@@ -4,93 +4,166 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#0B0D12"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:padding="20dp"
     tools:context=".MainActivity">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="SuperPodcast"
-        android:textSize="28sp"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp"
         android:textStyle="bold" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Search, subscribe and play podcasts"
+        android:layout_marginTop="2dp"
+        android:text="Discover something worth listening to."
+        android:textColor="#9CA3AF"
         android:textSize="14sp" />
 
     <EditText
         android:id="@+id/searchEditText"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:hint="Podcast name or topic"
-        android:inputType="text" />
+        android:layout_height="52dp"
+        android:layout_marginTop="20dp"
+        android:background="@drawable/search_background"
+        android:hint="Search podcasts or topics"
+        android:hintTextColor="#6B7280"
+        android:inputType="text"
+        android:paddingHorizontal="16dp"
+        android:singleLine="true"
+        android:textColor="#FFFFFF"
+        android:textColorHighlight="#7C3AED" />
 
     <Button
         android:id="@+id/searchButton"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Search" />
+        android:layout_height="52dp"
+        android:layout_marginTop="10dp"
+        android:backgroundTint="#7C3AED"
+        android:text="Search"
+        android:textAllCaps="false"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
     <CheckBox
         android:id="@+id/longTitleCheckBox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Only titles with 4+ words" />
+        android:layout_marginTop="4dp"
+        android:buttonTint="#8B5CF6"
+        android:text="Only titles with 4+ words"
+        android:textColor="#D1D5DB" />
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/statusTextView"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingVertical="6dp"
-        android:text="Enter a search term to begin."
-        android:textSize="14sp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="4dp">
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginEnd="10dp"
+            android:indeterminateTint="#8B5CF6"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/statusTextView"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Enter a search term to begin."
+            android:textColor="#9CA3AF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:text="Results"
+        android:textColor="#FFFFFF"
+        android:textSize="17sp"
+        android:textStyle="bold" />
 
     <ListView
         android:id="@+id/podcastListView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:dividerHeight="1dp" />
-
-    <TextView
-        android:id="@+id/selectedPodcastTextView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="8dp"
-        android:text="No podcast selected"
-        android:textStyle="bold" />
+        android:background="@drawable/panel_background"
+        android:clipToPadding="false"
+        android:divider="#252936"
+        android:dividerHeight="1dp"
+        android:padding="8dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_marginTop="14dp"
+        android:background="@drawable/player_background"
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <Button
-            android:id="@+id/subscribeButton"
-            android:layout_width="0dp"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Subscribe" />
+            android:text="NOW SELECTED"
+            android:textColor="#A78BFA"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/playButton"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/selectedPodcastTextView"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Play Latest" />
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:text="No podcast selected"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/subscribeButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#343846"
+                android:enabled="false"
+                android:text="Subscribe"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/playButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#7C3AED"
+                android:enabled="false"
+                android:text="Play Latest"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>
