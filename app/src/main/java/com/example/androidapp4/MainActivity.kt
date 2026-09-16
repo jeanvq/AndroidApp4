@@ -8,6 +8,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -16,6 +17,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import coil.load
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,7 +26,12 @@ import java.util.concurrent.Executors
 
 /** Main screen for the SuperPodcast networking assignment. */
 class MainActivity : AppCompatActivity() {
-    data class Podcast(val title: String, val artist: String, val collectionId: Long)
+    data class Podcast(
+        val title: String,
+        val artist: String,
+        val collectionId: Long,
+        val artworkUrl: String
+    )
 
     private lateinit var searchEditText: EditText
     private lateinit var searchButton: Button
@@ -128,10 +135,11 @@ class MainActivity : AppCompatActivity() {
             val title = item.optString("collectionName", "Unknown Podcast")
             val artist = item.optString("artistName", "Unknown Artist")
             val collectionId = item.optLong("collectionId", 0L)
+            val artworkUrl = item.optString("artworkUrl100", "")
             val wordCount = title.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size
 
             if (collectionId != 0L && (!useLongTitleFilter || wordCount >= 4)) {
-                podcasts.add(Podcast(title, artist, collectionId))
+                podcasts.add(Podcast(title, artist, collectionId, artworkUrl))
             }
         }
         return podcasts
@@ -151,7 +159,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Simple custom adapter used for the polished podcast result rows. */
+    /** Custom adapter that shows podcast title, artist and artwork. */
     private inner class PodcastAdapter(podcasts: List<Podcast>) :
         ArrayAdapter<Podcast>(this, R.layout.podcast_list_item, podcasts) {
 
@@ -160,10 +168,23 @@ class MainActivity : AppCompatActivity() {
                 .inflate(R.layout.podcast_list_item, parent, false)
             val podcast = getItem(position) ?: return row
 
-            row.findViewById<TextView>(R.id.podcastTitleTextView).text = podcast.title
-            row.findViewById<TextView>(R.id.podcastArtistTextView).text = podcast.artist
-            row.findViewById<TextView>(R.id.podcastInitialTextView).text =
-                podcast.title.firstOrNull()?.uppercaseChar()?.toString() ?: "P"
+            val titleView = row.findViewById<TextView>(R.id.podcastTitleTextView)
+            val artistView = row.findViewById<TextView>(R.id.podcastArtistTextView)
+            val initialView = row.findViewById<TextView>(R.id.podcastInitialTextView)
+            val artworkView = row.findViewById<ImageView>(R.id.podcastArtworkImageView)
+
+            titleView.text = podcast.title
+            artistView.text = podcast.artist
+            initialView.text = podcast.title.firstOrNull()?.uppercaseChar()?.toString() ?: "P"
+
+            // Coil downloads and caches the artwork. The initial remains visible as a fallback.
+            artworkView.load(podcast.artworkUrl) {
+                crossfade(true)
+                listener(
+                    onSuccess = { _, _ -> initialView.visibility = View.INVISIBLE },
+                    onError = { _, _ -> initialView.visibility = View.VISIBLE }
+                )
+            }
             return row
         }
     }
