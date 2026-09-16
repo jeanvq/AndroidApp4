@@ -1,6 +1,7 @@
 package com.example.androidapp4
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -35,7 +36,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var selectedPodcastTextView: TextView
     private lateinit var subscribeButton: Button
     private lateinit var playButton: Button
-
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPodcast: Podcast? = null
     private var player: ExoPlayer? = null
@@ -44,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         searchEditText = findViewById(R.id.searchEditText)
         searchButton = findViewById(R.id.searchButton)
         longTitleCheckBox = findViewById(R.id.longTitleCheckBox)
@@ -57,11 +56,8 @@ class MainActivity : AppCompatActivity() {
 
         searchButton.setOnClickListener {
             val term = searchEditText.text.toString().trim()
-            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic."
-            else searchPodcasts(term)
+            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic." else searchPodcasts(term)
         }
-
-        // Selecting a different podcast stops audio from the previous selection.
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
             stopPlayback(false)
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
@@ -72,11 +68,9 @@ class MainActivity : AppCompatActivity() {
             playButton.isEnabled = true
             updateSubscribeButton(podcast)
         }
-
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
         playButton.setOnClickListener {
-            if (isPlaying) stopPlayback(true)
-            else selectedPodcast?.let { loadLatestEpisode(it) }
+            if (isPlaying) stopPlayback(true) else selectedPodcast?.let { loadLatestEpisode(it) }
         }
     }
 
@@ -84,11 +78,12 @@ class MainActivity : AppCompatActivity() {
     private fun searchPodcasts(term: String) {
         stopPlayback(false)
         setLoading(true)
+        val useLongTitleFilter = longTitleCheckBox.isChecked
         executor.execute {
             try {
                 val encodedTerm = URLEncoder.encode(term, "UTF-8")
                 val jsonText = downloadText(URL("https://itunes.apple.com/search?term=$encodedTerm&media=podcast&entity=podcast&limit=25"))
-                val podcasts = parsePodcastResults(jsonText)
+                val podcasts = parsePodcastResults(jsonText, useLongTitleFilter)
                 runOnUiThread { showResults(podcasts); setLoading(false) }
             } catch (exception: Exception) {
                 runOnUiThread {
@@ -101,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Converts JSON into Podcast objects and applies the unusual title word-count filter. */
-    private fun parsePodcastResults(jsonText: String): List<Podcast> {
+    private fun parsePodcastResults(jsonText: String, useLongTitleFilter: Boolean): List<Podcast> {
         val results = JSONObject(jsonText).getJSONArray("results")
         val podcasts = mutableListOf<Podcast>()
         for (index in 0 until results.length()) {
@@ -110,9 +105,7 @@ class MainActivity : AppCompatActivity() {
             val artist = item.optString("artistName", "Unknown Artist")
             val collectionId = item.optLong("collectionId", 0L)
             val wordCount = title.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size
-            if (collectionId != 0L && (!longTitleCheckBox.isChecked || wordCount >= 4)) {
-                podcasts.add(Podcast(title, artist, collectionId))
-            }
+            if (collectionId != 0L && (!useLongTitleFilter || wordCount >= 4)) podcasts.add(Podcast(title, artist, collectionId))
         }
         return podcasts
     }
@@ -141,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         subscribeButton.text = if (subscribed) "Unsubscribe" else "Subscribe"
     }
 
-    /** Gets recent episodes for the selected podcast and chooses the first audio URL. */
+    /** Gets recent episodes and records the actual audio URL for troubleshooting. */
     private fun loadLatestEpisode(podcast: Podcast) {
         setLoading(true)
         playButton.isEnabled = false
@@ -152,7 +145,6 @@ class MainActivity : AppCompatActivity() {
                 val results = JSONObject(jsonText).getJSONArray("results")
                 var audioUrl: String? = null
                 var episodeTitle = "Latest episode"
-
                 for (index in 0 until results.length()) {
                     val item = results.getJSONObject(index)
                     if (item.optString("wrapperType") == "podcastEpisode") {
@@ -164,9 +156,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-
                 val finalAudioUrl = audioUrl
                 val finalTitle = episodeTitle
+                Log.d("SuperPodcast", "Episode title: $finalTitle")
+                Log.d("SuperPodcast", "Episode audio URL: $finalAudioUrl")
                 runOnUiThread {
                     setLoading(false)
                     playButton.isEnabled = true
@@ -175,6 +168,7 @@ class MainActivity : AppCompatActivity() {
                     else playAudio(finalAudioUrl, podcast.title, finalTitle)
                 }
             } catch (exception: Exception) {
+                Log.e("SuperPodcast", "Episode lookup failed", exception)
                 runOnUiThread {
                     setLoading(false)
                     playButton.isEnabled = true
@@ -184,22 +178,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Streams the remote episode with Media3 ExoPlayer. */
+    /** Streams the remote episode and logs the real player/audio state. */
     private fun playAudio(audioUrl: String, podcastTitle: String, episodeTitle: String) {
         stopPlayback(false)
         statusTextView.text = "Preparing: $episodeTitle"
         playButton.isEnabled = false
+        Log.d("SuperPodcast", "Starting ExoPlayer with: $audioUrl")
 
         player = ExoPlayer.Builder(this).build().also { exoPlayer ->
+            exoPlayer.volume = 1f
             exoPlayer.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    Log.d("SuperPodcast", "State=$playbackState playing=${exoPlayer.isPlaying} position=${exoPlayer.currentPosition} duration=${exoPlayer.duration}")
                     when (playbackState) {
                         Player.STATE_READY -> {
                             if (exoPlayer.playWhenReady) {
                                 isPlaying = true
                                 playButton.isEnabled = true
                                 playButton.text = "Stop"
-                                statusTextView.text = "Playing $podcastTitle: $episodeTitle"
+                                val audioGroups = exoPlayer.currentTracks.groups.count { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+                                Log.d("SuperPodcast", "READY audioGroups=$audioGroups volume=${exoPlayer.volume}")
+                                statusTextView.text = "Playing $podcastTitle: $episodeTitle | audio tracks: $audioGroups"
                             }
                         }
                         Player.STATE_ENDED -> {
@@ -210,14 +209,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                override fun onIsPlayingChanged(playing: Boolean) {
+                    Log.d("SuperPodcast", "onIsPlayingChanged=$playing position=${exoPlayer.currentPosition}")
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
+                    Log.e("SuperPodcast", "Player error: ${error.errorCodeName}", error)
                     isPlaying = false
                     playButton.isEnabled = true
                     playButton.text = "Play Latest"
-                    statusTextView.text = "This episode could not be played."
+                    statusTextView.text = "Playback error: ${error.errorCodeName}"
                 }
             })
-
             exoPlayer.setMediaItem(MediaItem.fromUri(audioUrl))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
@@ -243,11 +246,8 @@ class MainActivity : AppCompatActivity() {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        return try {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
+        return try { connection.inputStream.bufferedReader().use { it.readText() } }
+        finally { connection.disconnect() }
     }
 
     private fun setLoading(loading: Boolean) {
