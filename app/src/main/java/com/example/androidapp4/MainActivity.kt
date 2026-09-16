@@ -1,7 +1,9 @@
 package com.example.androidapp4
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
@@ -22,9 +24,7 @@ import java.util.concurrent.Executors
 
 /** Main screen for the SuperPodcast networking assignment. */
 class MainActivity : AppCompatActivity() {
-    data class Podcast(val title: String, val artist: String, val collectionId: Long) {
-        override fun toString(): String = "$title\n$artist"
-    }
+    data class Podcast(val title: String, val artist: String, val collectionId: Long)
 
     private lateinit var searchEditText: EditText
     private lateinit var searchButton: Button
@@ -57,18 +57,15 @@ class MainActivity : AppCompatActivity() {
 
         searchButton.setOnClickListener {
             val term = searchEditText.text.toString().trim()
-            if (term.isEmpty()) {
-                statusTextView.text = "Please enter a podcast name or topic."
-            } else {
-                searchPodcasts(term)
-            }
+            if (term.isEmpty()) statusTextView.text = "Please enter a podcast name or topic."
+            else searchPodcasts(term)
         }
 
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
             stopPlayback(false)
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
             val podcast = selectedPodcast ?: return@setOnItemClickListener
-            selectedPodcastTextView.text = "Selected: ${podcast.title}"
+            selectedPodcastTextView.text = podcast.title
             statusTextView.text = "Selected ${podcast.title}"
             subscribeButton.isEnabled = true
             playButton.isEnabled = true
@@ -107,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Converts the JSON results and optionally keeps titles with four or more words. */
+    /** Converts JSON results and optionally keeps titles with four or more words. */
     private fun parsePodcastResults(jsonText: String, useLongTitleFilter: Boolean): List<Podcast> {
         val results = JSONObject(jsonText).getJSONArray("results")
         val podcasts = mutableListOf<Podcast>()
@@ -126,17 +123,34 @@ class MainActivity : AppCompatActivity() {
         return podcasts
     }
 
-    /** Displays the search results in the ListView. */
+    /** Displays results with a custom row so text stays readable in dark mode. */
     private fun showResults(podcasts: List<Podcast>) {
         selectedPodcast = null
         selectedPodcastTextView.text = "No podcast selected"
         subscribeButton.isEnabled = false
         playButton.isEnabled = false
-        podcastListView.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_2, android.R.id.text1, podcasts)
+        podcastListView.adapter = PodcastAdapter(podcasts)
         statusTextView.text = if (podcasts.isEmpty()) {
             "No podcasts matched this search/filter."
         } else {
             "${podcasts.size} podcasts found - tap one to select it."
+        }
+    }
+
+    /** Simple custom adapter used for the polished podcast result rows. */
+    private inner class PodcastAdapter(podcasts: List<Podcast>) :
+        ArrayAdapter<Podcast>(this, R.layout.podcast_list_item, podcasts) {
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val row = convertView ?: LayoutInflater.from(context)
+                .inflate(R.layout.podcast_list_item, parent, false)
+            val podcast = getItem(position) ?: return row
+
+            row.findViewById<TextView>(R.id.podcastTitleTextView).text = podcast.title
+            row.findViewById<TextView>(R.id.podcastArtistTextView).text = podcast.artist
+            row.findViewById<TextView>(R.id.podcastInitialTextView).text =
+                podcast.title.firstOrNull()?.uppercaseChar()?.toString() ?: "P"
+            return row
         }
     }
 
@@ -147,11 +161,8 @@ class MainActivity : AppCompatActivity() {
         val subscribed = preferences.getBoolean(key, false)
         preferences.edit().putBoolean(key, !subscribed).apply()
         updateSubscribeButton(podcast)
-        statusTextView.text = if (!subscribed) {
-            "Subscribed to ${podcast.title}"
-        } else {
-            "Unsubscribed from ${podcast.title}"
-        }
+        statusTextView.text = if (!subscribed) "Subscribed to ${podcast.title}"
+        else "Unsubscribed from ${podcast.title}"
     }
 
     private fun updateSubscribeButton(podcast: Podcast) {
@@ -193,9 +204,7 @@ class MainActivity : AppCompatActivity() {
                     if (selectedPodcast?.collectionId != podcast.collectionId) return@runOnUiThread
                     if (finalAudioUrl == null) {
                         statusTextView.text = "No playable episode was returned for ${podcast.title}."
-                    } else {
-                        playAudio(finalAudioUrl, podcast.title, finalTitle)
-                    }
+                    } else playAudio(finalAudioUrl, podcast.title, finalTitle)
                 }
             } catch (exception: Exception) {
                 runOnUiThread {
@@ -217,15 +226,12 @@ class MainActivity : AppCompatActivity() {
             exoPlayer.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
-                        Player.STATE_READY -> {
-                            if (exoPlayer.playWhenReady) {
-                                isPlaying = true
-                                playButton.isEnabled = true
-                                playButton.text = "Stop"
-                                statusTextView.text = "Playing $podcastTitle: $episodeTitle"
-                            }
+                        Player.STATE_READY -> if (exoPlayer.playWhenReady) {
+                            isPlaying = true
+                            playButton.isEnabled = true
+                            playButton.text = "Stop"
+                            statusTextView.text = "Playing $podcastTitle: $episodeTitle"
                         }
-
                         Player.STATE_ENDED -> {
                             isPlaying = false
                             playButton.text = "Play Latest"
@@ -241,7 +247,6 @@ class MainActivity : AppCompatActivity() {
                     statusTextView.text = "This episode could not be played."
                 }
             })
-
             exoPlayer.setMediaItem(MediaItem.fromUri(audioUrl))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
@@ -259,9 +264,7 @@ class MainActivity : AppCompatActivity() {
             playButton.text = "Play Latest"
             playButton.isEnabled = selectedPodcast != null
         }
-        if (showMessage && ::statusTextView.isInitialized) {
-            statusTextView.text = "Playback stopped."
-        }
+        if (showMessage && ::statusTextView.isInitialized) statusTextView.text = "Playback stopped."
     }
 
     /** Downloads text used by the iTunes search and episode requests. */
