@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             else searchPodcasts(term)
         }
 
-        // Changing the selected podcast stops any episode that belonged to the previous selection.
+        // Changing the selected podcast stops audio from the previous selection.
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
             stopPlayback(showMessage = false)
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
@@ -80,8 +80,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
-
-        // The same button starts playback and can also stop the current episode.
         playButton.setOnClickListener {
             if (isPlaying) stopPlayback(showMessage = true)
             else selectedPodcast?.let { loadLatestEpisode(it) }
@@ -209,19 +207,19 @@ class MainActivity : AppCompatActivity() {
             setAudioAttributes(attributes)
             setVolume(1.0f, 1.0f)
             setDataSource(audioUrl)
-            setOnPreparedListener {
-                it.start()
+            setOnPreparedListener { player ->
+                player.start()
                 isPlaying = true
                 playButton.isEnabled = true
                 playButton.text = "Stop"
                 statusTextView.text = "Playing $podcastTitle: $episodeTitle"
             }
-            setOnCompletionListener {
+            setOnCompletionListener { player ->
                 isPlaying = false
                 playButton.text = "Play Latest"
                 statusTextView.text = "Episode finished: $episodeTitle"
-                it.release()
-                if (mediaPlayer === it) mediaPlayer = null
+                player.release()
+                mediaPlayer = null
             }
             setOnErrorListener { player, _, _ ->
                 isPlaying = false
@@ -237,13 +235,13 @@ class MainActivity : AppCompatActivity() {
 
     /** Stops and releases the current stream so old playback cannot remain attached to the UI. */
     private fun stopPlayback(showMessage: Boolean) {
-        mediaPlayer?.let {
+        mediaPlayer?.let { player ->
             try {
-                if (it.isPlaying) it.stop()
+                if (player.isPlaying) player.stop()
             } catch (_: IllegalStateException) {
                 // Player may still be preparing; releasing it is enough.
             }
-            it.release()
+            player.release()
         }
         mediaPlayer = null
         isPlaying = false
