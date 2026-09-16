@@ -8,63 +8,16 @@
     android:paddingHorizontal="12dp"
     android:paddingVertical="9dp">
 
-    <FrameLayout
-        android:layout_width="54dp"
-        android:layout_height="54dp">
-
-        <TextView
-            android:id="@+id/podcastInitialTextView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@drawable/podcast_initial_background"
-            android:gravity="center"
-            android:text="S"
-            android:textColor="#38BDF8"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <ImageView
-            android:id="@+id/podcastArtworkImageView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="Podcast artwork"
-            android:scaleType="centerCrop" />
+    <FrameLayout android:layout_width="54dp" android:layout_height="54dp">
+        <TextView android:id="@+id/podcastInitialTextView" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/podcast_initial_background" android:gravity="center" android:text="S" android:textColor="#38BDF8" android:textSize="18sp" android:textStyle="bold" />
+        <ImageView android:id="@+id/podcastArtworkImageView" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Podcast artwork" android:scaleType="centerCrop" />
     </FrameLayout>
 
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="14dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/podcastTitleTextView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#F8FAFC"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/podcastArtistTextView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#94A3B8"
-            android:textSize="13sp" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/podcastTitleTextView" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textColor="#F8FAFC" android:textSize="16sp" android:textStyle="bold" />
+        <TextView android:id="@+id/podcastArtistTextView" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:ellipsize="end" android:maxLines="1" android:textColor="#94A3B8" android:textSize="13sp" />
+        <TextView android:id="@+id/subscribedBadgeTextView" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="✓ Subscribed" android:textColor="#38BDF8" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:text="›"
-        android:textColor="#38BDF8"
-        android:textSize="30sp" />
-
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="›" android:textColor="#38BDF8" android:textSize="30sp" />
 </LinearLayout>
