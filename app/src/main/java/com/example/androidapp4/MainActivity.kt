@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPodcast: Podcast? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var isPlaying = false
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
@@ -66,22 +67,30 @@ class MainActivity : AppCompatActivity() {
             else searchPodcasts(term)
         }
 
-        // Selecting a result enables the two main podcast actions.
+        // Changing the selected podcast stops any episode that belonged to the previous selection.
         podcastListView.setOnItemClickListener { parent, _, position, _ ->
+            stopPlayback(showMessage = false)
             selectedPodcast = parent.getItemAtPosition(position) as Podcast
             val podcast = selectedPodcast ?: return@setOnItemClickListener
             selectedPodcastTextView.text = "Selected: ${podcast.title}"
+            statusTextView.text = "Selected ${podcast.title}"
             subscribeButton.isEnabled = true
             playButton.isEnabled = true
             updateSubscribeButton(podcast)
         }
 
         subscribeButton.setOnClickListener { selectedPodcast?.let { toggleSubscription(it) } }
-        playButton.setOnClickListener { selectedPodcast?.let { loadLatestEpisode(it) } }
+
+        // The same button starts playback and can also stop the current episode.
+        playButton.setOnClickListener {
+            if (isPlaying) stopPlayback(showMessage = true)
+            else selectedPodcast?.let { loadLatestEpisode(it) }
+        }
     }
 
     /** Requests podcast search results from iTunes on a background thread. */
     private fun searchPodcasts(term: String) {
+        stopPlayback(showMessage = false)
         setLoading(true)
         executor.execute {
             try {
@@ -117,6 +126,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showResults(podcasts: List<Podcast>) {
+        selectedPodcast = null
+        selectedPodcastTextView.text = "No podcast selected"
+        subscribeButton.isEnabled = false
+        playButton.isEnabled = false
         podcastListView.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_2, android.R.id.text1, podcasts)
         statusTextView.text = if (podcasts.isEmpty()) "No podcasts matched this search/filter." else "${podcasts.size} podcasts found - tap one to select it."
     }
@@ -139,7 +152,8 @@ class MainActivity : AppCompatActivity() {
     /** Gets recent episodes for the selected podcast and chooses the first audio URL. */
     private fun loadLatestEpisode(podcast: Podcast) {
         setLoading(true)
-        statusTextView.text = "Loading latest episode..."
+        playButton.isEnabled = false
+        statusTextView.text = "Loading latest episode from ${podcast.title}..."
         executor.execute {
             try {
                 val jsonText = downloadText(URL("https://itunes.apple.com/lookup?id=${podcast.collectionId}&entity=podcastEpisode&limit=5"))
@@ -163,18 +177,24 @@ class MainActivity : AppCompatActivity() {
                 val finalTitle = episodeTitle
                 runOnUiThread {
                     setLoading(false)
-                    if (finalAudioUrl == null) statusTextView.text = "No playable episode was returned for this podcast."
-                    else playAudio(finalAudioUrl, finalTitle)
+                    playButton.isEnabled = true
+                    if (selectedPodcast?.collectionId != podcast.collectionId) return@runOnUiThread
+                    if (finalAudioUrl == null) statusTextView.text = "No playable episode was returned for ${podcast.title}."
+                    else playAudio(finalAudioUrl, podcast.title, finalTitle)
                 }
             } catch (exception: Exception) {
-                runOnUiThread { setLoading(false); statusTextView.text = "Could not load an episode for this podcast." }
+                runOnUiThread {
+                    setLoading(false)
+                    playButton.isEnabled = true
+                    statusTextView.text = "Could not load an episode for ${podcast.title}."
+                }
             }
         }
     }
 
-    /** Streams podcast audio with MediaPlayer and requests normal media audio focus. */
-    private fun playAudio(audioUrl: String, episodeTitle: String) {
-        mediaPlayer?.release()
+    /** Streams podcast audio with MediaPlayer and keeps the button/status synchronized. */
+    private fun playAudio(audioUrl: String, podcastTitle: String, episodeTitle: String) {
+        stopPlayback(showMessage = false)
 
         val attributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -182,26 +202,56 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         requestAudioFocus(attributes)
+        statusTextView.text = "Preparing: $episodeTitle"
+        playButton.isEnabled = false
+
         mediaPlayer = MediaPlayer().apply {
             setAudioAttributes(attributes)
             setVolume(1.0f, 1.0f)
             setDataSource(audioUrl)
             setOnPreparedListener {
                 it.start()
-                statusTextView.text = "Playing: $episodeTitle"
-                playButton.text = "Playing..."
+                isPlaying = true
+                playButton.isEnabled = true
+                playButton.text = "Stop"
+                statusTextView.text = "Playing $podcastTitle: $episodeTitle"
             }
             setOnCompletionListener {
+                isPlaying = false
                 playButton.text = "Play Latest"
-                statusTextView.text = "Episode finished."
+                statusTextView.text = "Episode finished: $episodeTitle"
+                it.release()
+                if (mediaPlayer === it) mediaPlayer = null
             }
-            setOnErrorListener { _, _, _ ->
+            setOnErrorListener { player, _, _ ->
+                isPlaying = false
+                playButton.isEnabled = true
                 playButton.text = "Play Latest"
                 statusTextView.text = "This episode could not be played."
+                player.reset()
                 true
             }
             prepareAsync()
         }
+    }
+
+    /** Stops and releases the current stream so old playback cannot remain attached to the UI. */
+    private fun stopPlayback(showMessage: Boolean) {
+        mediaPlayer?.let {
+            try {
+                if (it.isPlaying) it.stop()
+            } catch (_: IllegalStateException) {
+                // Player may still be preparing; releasing it is enough.
+            }
+            it.release()
+        }
+        mediaPlayer = null
+        isPlaying = false
+        if (::playButton.isInitialized) {
+            playButton.text = "Play Latest"
+            playButton.isEnabled = selectedPodcast != null
+        }
+        if (showMessage && ::statusTextView.isInitialized) statusTextView.text = "Playback stopped."
     }
 
     /** Audio focus makes sure podcast sound is routed as normal media audio. */
@@ -234,7 +284,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        mediaPlayer?.release()
+        stopPlayback(showMessage = false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         }
